@@ -14,6 +14,7 @@ docker run -d --name terminal-monitor-mysql \
   -e MYSQL_DATABASE=terminal_monitor \
   mysql:8.0
 
+docker run -d --name terminal-monitor-mysql   -p 3306:3306   -e MYSQL_ROOT_PASSWORD=password   -e MYSQL_DATABASE=terminal_monitor   mysql:8.0
 # 或者使用docker-compose
 docker-compose up -d mysql
 ```
@@ -111,7 +112,7 @@ curl -X POST http://localhost:8080/api/agents/register \
 ```bash
 curl -X POST http://localhost:8080/api/agents/agent-001/heartbeat \
   -H "Content-Type: application/json" \
-  -d '{"status": "running"}'
+  -d '{"status": "online"}'
 ```
 
 #### 上报监控数据
@@ -121,8 +122,8 @@ curl -X POST http://localhost:8080/api/agents/agent-001/data \
   -d '{
     "timestamp": "2024-01-01T12:00:00",
     "processes": [
-      {"pid": 1234, "name": "nginx", "cpu_percent": 2.5, "memory_percent": 1.2, "status": "running"},
-      {"pid": 5678, "name": "mysql", "cpu_percent": 5.0, "memory_percent": 15.5, "status": "running"}
+      {"pid": 1234, "name": "nginx", "cpu_percent": 2.5, "memory_percent": 1.2, "status": "online"},
+      {"pid": 5678, "name": "mysql", "cpu_percent": 5.0, "memory_percent": 15.5, "status": "online"}
     ],
     "ports": [
       {"port": 80, "protocol": "TCP", "status": "LISTEN", "pid": 1234, "process_name": "nginx"},

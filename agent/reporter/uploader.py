@@ -28,7 +28,7 @@ class DataReporter:
         url = f"{self.server_url}/api/agents/register"
         return self._post_with_retry(url, agent_info)
 
-    def send_heartbeat(self, agent_id: str, status: str = "running") -> bool:
+    def send_heartbeat(self, agent_id: str, status: str = "online") -> bool:
         """发送心跳"""
         url = f"{self.server_url}/api/agents/{agent_id}/heartbeat"
         data = {

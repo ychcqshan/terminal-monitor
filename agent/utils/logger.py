@@ -11,6 +11,10 @@ from typing import Optional
 def setup_logger(log_level: str = "INFO", log_file: Optional[str] = None) -> logging.Logger:
     """配置日志"""
     logger = logging.getLogger("AgentLogger")
+
+    if logger.handlers:
+        return logger
+
     logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
 
     formatter = logging.Formatter(

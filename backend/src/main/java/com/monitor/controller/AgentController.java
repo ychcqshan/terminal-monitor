@@ -4,6 +4,8 @@ import com.monitor.entity.Agent;
 import com.monitor.entity.PortInfo;
 import com.monitor.entity.ProcessInfo;
 import com.monitor.service.AgentService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,6 +17,8 @@ import java.util.Map;
 @RequestMapping("/api/agents")
 @CrossOrigin(origins = "*")
 public class AgentController {
+
+    private static final Logger logger = LoggerFactory.getLogger(AgentController.class);
 
     private final AgentService agentService;
 
@@ -45,7 +49,7 @@ public class AgentController {
             @RequestBody Map<String, String> body) {
 
         Map<String, Object> response = new HashMap<>();
-        String status = body.getOrDefault("status", "running");
+        String status = body.getOrDefault("status", "online");
 
         boolean success = agentService.updateHeartbeat(agentId, status);
         response.put("success", success);
@@ -60,6 +64,7 @@ public class AgentController {
             @RequestBody Map<String, Object> data) {
 
         Map<String, Object> response = new HashMap<>();
+        logger.info("Received data upload request from agentId: {}", agentId);
 
         try {
             agentService.saveMonitorData(agentId, data);
@@ -67,6 +72,7 @@ public class AgentController {
             response.put("message", "Data received successfully");
             return ResponseEntity.ok(response);
         } catch (Exception e) {
+            logger.error("Data processing failed for agentId: {}", agentId, e);
             response.put("success", false);
             response.put("message", "Data processing failed: " + e.getMessage());
             return ResponseEntity.badRequest().body(response);
@@ -91,6 +97,38 @@ public class AgentController {
         return agentService.getAgent(agentId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PutMapping("/{agentId}")
+    public ResponseEntity<Map<String, Object>> updateAgent(
+            @PathVariable String agentId,
+            @RequestBody Map<String, String> agentInfo) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            boolean success = agentService.updateAgent(agentId, agentInfo);
+            response.put("success", success);
+            response.put("message", success ? "Agent updated successfully" : "Agent not found");
+            return success ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "Update failed: " + e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
+
+    @DeleteMapping("/{agentId}")
+    public ResponseEntity<Map<String, Object>> deleteAgent(@PathVariable String agentId) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            boolean success = agentService.deleteAgent(agentId);
+            response.put("success", success);
+            response.put("message", success ? "Agent deleted successfully" : "Agent not found");
+            return success ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "Delete failed: " + e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        }
     }
 
     @GetMapping("/{agentId}/processes")
