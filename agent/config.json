@@ -1,0 +1,12 @@
+{
+  "server_url": "http://localhost:8080",
+  "agent_id": "",
+  "agent_name": "",
+  "collect_interval": 60,
+  "heartbeat_interval": 30,
+  "retry_times": 3,
+  "retry_interval": 5,
+  "log_level": "INFO",
+  "db_path": "./data/agent.db",
+  "platform": "auto"
+}
