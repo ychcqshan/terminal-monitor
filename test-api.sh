@@ -37,7 +37,7 @@ echo "[测试3] 发送心跳"
 echo "curl -X POST ${BASE_URL}/api/agents/${AGENT_ID}/heartbeat"
 curl -s -X POST "${BASE_URL}/api/agents/${AGENT_ID}/heartbeat" \
   -H "Content-Type: application/json" \
-  -d '{"status": "running"}' | jq .
+  -d '{"status": "online"}' | jq .
 echo ""
 
 # 测试4: 获取Agent列表
@@ -60,14 +60,14 @@ curl -s -X POST "${BASE_URL}/api/agents/${AGENT_ID}/data" \
         "name": "nginx",
         "cpu_percent": 2.5,
         "memory_percent": 1.2,
-        "status": "running"
+        "status": "online"
       },
       {
         "pid": 5678,
         "name": "mysql",
         "cpu_percent": 5.0,
         "memory_percent": 15.5,
-        "status": "running"
+        "status": "online"
       }
     ],
     "ports": [

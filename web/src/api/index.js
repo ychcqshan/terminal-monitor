@@ -26,6 +26,14 @@ export const agentApi = {
 
   getAgentPorts(id) {
     return api.get(`/agents/${id}/ports`)
+  },
+
+  updateAgent(id, data) {
+    return api.put(`/agents/${id}`, data)
+  },
+
+  deleteAgent(id) {
+    return api.delete(`/agents/${id}`)
   }
 }
 

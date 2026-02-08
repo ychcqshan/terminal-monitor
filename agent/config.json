@@ -1,7 +1,7 @@
 {
   "server_url": "http://localhost:8080",
-  "agent_id": "",
-  "agent_name": "",
+  "agent_id": "98905a04-811d-4bc0-bb91-c90c9fbb8ae8",
+  "agent_name": "zw",
   "collect_interval": 60,
   "heartbeat_interval": 30,
   "retry_times": 3,
