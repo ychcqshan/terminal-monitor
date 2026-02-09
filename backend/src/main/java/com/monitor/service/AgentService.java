@@ -130,8 +130,17 @@ public class AgentService {
     @Transactional
     public void saveMonitorData(String agentId, Map<String, Object> data) {
         logger.info("========== Saving monitor data for agent: {} ==========", agentId);
-        Object processesObj = data.get("processes");
-        Object portsObj = data.get("ports");
+
+        // First, get the nested 'data' map from the payload.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> nestedData = (Map<String, Object>) data.get("data");
+        if (nestedData == null) {
+            logger.warn("Payload for agent {} does not contain a 'data' object.", agentId);
+            return;
+        }
+        Object processesObj = nestedData.get("processes");
+        Object portsObj = nestedData.get("ports");
+        logger.debug("---------- Process Data {}  ----------", data.toString());
 
         if (processesObj instanceof List) {
             @SuppressWarnings("unchecked")
@@ -165,6 +174,8 @@ public class AgentService {
                 processInfoRepository.saveAndFlush(processInfo);
             }
             logger.debug("Finished saving {} process entries.", processes.size());
+        }else{
+            logger.warn("No valid process data received for agent: {}", agentId);
         }
 
         if (portsObj instanceof List) {
@@ -195,6 +206,8 @@ public class AgentService {
                 portInfoRepository.saveAndFlush(portInfo);
             }
             logger.debug("Finished saving {} port entries.", ports.size());
+        }else{
+            logger.warn("No valid port data received for agent: {}", agentId);
         }
         logger.info("========== Finished saving data for agent: {} ==========", agentId);
     }
