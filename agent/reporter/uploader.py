@@ -46,6 +46,7 @@ class DataReporter:
             "data": data,
             "timestamp": datetime.now().isoformat()
         }
+        print(f"DEBUG: Payload to be sent: {payload}") # <--- 在这里添加打印语句
         result = self._post_with_retry(url, payload)
         return result is not None
 

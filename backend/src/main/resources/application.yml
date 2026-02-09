@@ -22,5 +22,5 @@ app:
 
 logging:
   level:
-    com.monitor: INFO
-    org.springframework.web: INFO
+    com.monitor: DEBUG
+    org.springframework.web: DEBUG
