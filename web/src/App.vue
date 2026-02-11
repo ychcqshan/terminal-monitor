@@ -19,6 +19,14 @@
               <el-icon><Monitor /></el-icon>
               <span>Agent管理</span>
             </el-menu-item>
+            <el-menu-item index="/baselines">
+              <el-icon><SetUp /></el-icon>
+              <span>基线管理</span>
+            </el-menu-item>
+            <el-menu-item index="/alerts">
+              <el-icon><Warning /></el-icon>
+              <span>告警中心</span>
+            </el-menu-item>
           </el-menu>
         </el-aside>
         <el-container>
@@ -41,13 +49,37 @@ import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 const locale = ref(zhCn)
 </script>
 
-<style scoped>
+<style>
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+#app {
+  height: 100%;
+}
+
 .app-container {
-  height: 100vh;
+  height: 100%;
+  display: flex;
+}
+
+.el-container {
+  flex: 1;
+  min-height: 0;
 }
 
 .el-aside {
   background-color: #304156;
+  flex-shrink: 0;
+}
+
+.el-main {
+  background: #f0f2f5;
+  flex: 1;
+  overflow: auto;
+  padding: 20px;
 }
 
 .logo {
@@ -64,14 +96,11 @@ const locale = ref(zhCn)
   box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
   display: flex;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .header-title {
   font-size: 18px;
   font-weight: bold;
-}
-
-.el-main {
-  background: #f0f2f5;
 }
 </style>
