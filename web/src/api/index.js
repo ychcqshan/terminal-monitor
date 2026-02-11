@@ -1,4 +1,6 @@
 import axios from 'axios'
+import { baselineApi } from './baseline'
+import { alertApi } from './alert'
 
 const API_BASE = '/api'
 
@@ -58,5 +60,7 @@ export const healthApi = {
     return api.get('/health')
   }
 }
+
+export { baselineApi, alertApi }
 
 export default api

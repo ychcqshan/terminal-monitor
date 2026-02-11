@@ -19,6 +19,16 @@ const routes = [
     path: '/agents/:id',
     name: 'AgentDetail',
     component: () => import('../views/AgentDetail.vue')
+  },
+  {
+    path: '/baselines',
+    name: 'BaselineManager',
+    component: () => import('../views/BaselineManager.vue')
+  },
+  {
+    path: '/alerts',
+    name: 'AlertCenter',
+    component: () => import('../views/AlertCenter.vue')
   }
 ]
 
