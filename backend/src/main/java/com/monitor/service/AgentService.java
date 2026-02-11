@@ -1,11 +1,19 @@
 package com.monitor.service;
 
 import com.monitor.entity.Agent;
+import com.monitor.entity.HostInfo;
 import com.monitor.entity.PortInfo;
 import com.monitor.entity.ProcessInfo;
+import com.monitor.entity.InstalledSoftware;
+import com.monitor.entity.UsbDevice;
+import com.monitor.entity.LoginLog;
 import com.monitor.repository.AgentRepository;
+import com.monitor.repository.HostInfoRepository;
 import com.monitor.repository.PortInfoRepository;
 import com.monitor.repository.ProcessInfoRepository;
+import com.monitor.repository.InstalledSoftwareRepository;
+import com.monitor.repository.UsbDeviceRepository;
+import com.monitor.repository.LoginLogRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -24,13 +32,25 @@ public class AgentService {
     private final AgentRepository agentRepository;
     private final ProcessInfoRepository processInfoRepository;
     private final PortInfoRepository portInfoRepository;
+    private final HostInfoRepository hostInfoRepository;
+    private final InstalledSoftwareRepository installedSoftwareRepository;
+    private final UsbDeviceRepository usbDeviceRepository;
+    private final LoginLogRepository loginLogRepository;
 
     public AgentService(AgentRepository agentRepository,
                        ProcessInfoRepository processInfoRepository,
-                       PortInfoRepository portInfoRepository) {
+                       PortInfoRepository portInfoRepository,
+                       HostInfoRepository hostInfoRepository,
+                       InstalledSoftwareRepository installedSoftwareRepository,
+                       UsbDeviceRepository usbDeviceRepository,
+                       LoginLogRepository loginLogRepository) {
         this.agentRepository = agentRepository;
         this.processInfoRepository = processInfoRepository;
         this.portInfoRepository = portInfoRepository;
+        this.hostInfoRepository = hostInfoRepository;
+        this.installedSoftwareRepository = installedSoftwareRepository;
+        this.usbDeviceRepository = usbDeviceRepository;
+        this.loginLogRepository = loginLogRepository;
     }
 
     public Agent registerOrUpdateAgent(Map<String, String> agentInfo) {
@@ -104,6 +124,10 @@ public class AgentService {
         if (agentRepository.existsById(agentId)) {
             processInfoRepository.deleteByAgentId(agentId);
             portInfoRepository.deleteByAgentId(agentId);
+            hostInfoRepository.deleteByAgentId(agentId);
+            installedSoftwareRepository.deleteByAgentId(agentId);
+            usbDeviceRepository.deleteByAgentId(agentId);
+            loginLogRepository.deleteByAgentId(agentId);
             agentRepository.deleteById(agentId);
             logger.info("Agent deleted: {}", agentId);
             return true;
@@ -131,16 +155,19 @@ public class AgentService {
     public void saveMonitorData(String agentId, Map<String, Object> data) {
         logger.info("========== Saving monitor data for agent: {} ==========", agentId);
 
-        // First, get the nested 'data' map from the payload.
         @SuppressWarnings("unchecked")
         Map<String, Object> nestedData = (Map<String, Object>) data.get("data");
         if (nestedData == null) {
             logger.warn("Payload for agent {} does not contain a 'data' object.", agentId);
             return;
         }
+
         Object processesObj = nestedData.get("processes");
         Object portsObj = nestedData.get("ports");
-        logger.debug("---------- Process Data {}  ----------", data.toString());
+        Object hostInfoObj = nestedData.get("host_info");
+        Object installedSoftwareObj = nestedData.get("installed_software");
+        Object usbDevicesObj = nestedData.get("usb_devices");
+        Object loginLogsObj = nestedData.get("login_logs");
 
         if (processesObj instanceof List) {
             @SuppressWarnings("unchecked")
@@ -169,13 +196,11 @@ public class AgentService {
                 processInfo.setMemoryPercent(getDoubleValue(proc.get("memory_percent")));
                 processInfo.setStatus(getStringValue(proc.get("status")));
                 processInfo.setCreateTime(getStringValue(proc.get("create_time")));
-                // To avoid flooding the database, we can decide whether to save all data or just a snapshot.
-                // For now, we save all.
                 processInfoRepository.saveAndFlush(processInfo);
             }
             logger.debug("Finished saving {} process entries.", processes.size());
-        }else{
-            logger.warn("No valid process data received for agent: {}", agentId);
+        } else {
+            logger.debug("No process data received for agent: {}", agentId);
         }
 
         if (portsObj instanceof List) {
@@ -206,9 +231,204 @@ public class AgentService {
                 portInfoRepository.saveAndFlush(portInfo);
             }
             logger.debug("Finished saving {} port entries.", ports.size());
-        }else{
-            logger.warn("No valid port data received for agent: {}", agentId);
+        } else {
+            logger.debug("No port data received for agent: {}", agentId);
         }
+
+        if (hostInfoObj instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> hostInfoData = (Map<String, Object>) hostInfoObj;
+            logger.debug("---------- Host Info Data ----------");
+            HostInfo hostInfo = new HostInfo();
+            hostInfo.setAgentId(agentId);
+
+            if (hostInfoData.containsKey("cpu_brand")) {
+                hostInfo.setCpuBrand(getStringValue(hostInfoData.get("cpu_brand")));
+            }
+            if (hostInfoData.containsKey("cpu_arch")) {
+                hostInfo.setCpuArch(getStringValue(hostInfoData.get("cpu_arch")));
+            }
+            if (hostInfoData.containsKey("cpu_cores")) {
+                hostInfo.setCpuCores(getIntValue(hostInfoData.get("cpu_cores")));
+            }
+            if (hostInfoData.containsKey("cpu_threads")) {
+                hostInfo.setCpuThreads(getIntValue(hostInfoData.get("cpu_threads")));
+            }
+            if (hostInfoData.containsKey("cpu_frequency")) {
+                hostInfo.setCpuFrequency(getDoubleValue(hostInfoData.get("cpu_frequency")));
+            }
+            if (hostInfoData.containsKey("memory_total")) {
+                hostInfo.setMemoryTotal(getLongValue(hostInfoData.get("memory_total")));
+            }
+            if (hostInfoData.containsKey("memory_available")) {
+                hostInfo.setMemoryAvailable(getLongValue(hostInfoData.get("memory_available")));
+            }
+            if (hostInfoData.containsKey("memory_percent")) {
+                hostInfo.setMemoryPercent(getDoubleValue(hostInfoData.get("memory_percent")));
+            }
+            if (hostInfoData.containsKey("memory_human")) {
+                hostInfo.setMemoryHuman(getStringValue(hostInfoData.get("memory_human")));
+            }
+            if (hostInfoData.containsKey("storage_devices")) {
+                hostInfo.setStorageDevices(getStringValue(hostInfoData.get("storage_devices")));
+            }
+            if (hostInfoData.containsKey("storage_total")) {
+                hostInfo.setStorageTotal(getLongValue(hostInfoData.get("storage_total")));
+            }
+            if (hostInfoData.containsKey("motherboard_model")) {
+                hostInfo.setMotherboardModel(getStringValue(hostInfoData.get("motherboard_model")));
+            }
+            if (hostInfoData.containsKey("motherboard_serial")) {
+                hostInfo.setMotherboardSerial(getStringValue(hostInfoData.get("motherboard_serial")));
+            }
+            if (hostInfoData.containsKey("bios_version")) {
+                hostInfo.setBiosVersion(getStringValue(hostInfoData.get("bios_version")));
+            }
+            if (hostInfoData.containsKey("os_name")) {
+                hostInfo.setOsName(getStringValue(hostInfoData.get("os_name")));
+            }
+            if (hostInfoData.containsKey("os_version")) {
+                hostInfo.setOsVersion(getStringValue(hostInfoData.get("os_version")));
+            }
+            if (hostInfoData.containsKey("os_arch")) {
+                hostInfo.setOsArch(getStringValue(hostInfoData.get("os_arch")));
+            }
+            if (hostInfoData.containsKey("kernel_version")) {
+                hostInfo.setKernelVersion(getStringValue(hostInfoData.get("kernel_version")));
+            }
+            if (hostInfoData.containsKey("mac_addresses")) {
+                hostInfo.setMacAddresses(getStringValue(hostInfoData.get("mac_addresses")));
+            }
+            if (hostInfoData.containsKey("ip_addresses")) {
+                hostInfo.setIpAddresses(getStringValue(hostInfoData.get("ip_addresses")));
+            }
+
+            hostInfoRepository.saveAndFlush(hostInfo);
+            logger.debug("Finished saving host info entry.");
+        } else {
+            logger.debug("No host info data received for agent: {}", agentId);
+        }
+
+        if (installedSoftwareObj instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> installedSoftwareList = (List<Map<String, Object>>) installedSoftwareObj;
+            logger.debug("---------- Installed Software Data ({} total) ----------", installedSoftwareList.size());
+
+            for (Map<String, Object> sw : installedSoftwareList) {
+                InstalledSoftware software = new InstalledSoftware();
+                software.setAgentId(agentId);
+
+                if (sw.containsKey("software_name")) {
+                    software.setSoftwareName(getStringValue(sw.get("software_name")));
+                }
+                if (sw.containsKey("software_type")) {
+                    software.setSoftwareType(getStringValue(sw.get("software_type")));
+                }
+                if (sw.containsKey("version")) {
+                    software.setVersion(getStringValue(sw.get("version")));
+                }
+                if (sw.containsKey("publisher")) {
+                    software.setPublisher(getStringValue(sw.get("publisher")));
+                }
+                if (sw.containsKey("install_date")) {
+                    software.setInstallDate(parseLocalDate(sw.get("install_date")));
+                }
+                if (sw.containsKey("install_location")) {
+                    software.setInstallLocation(getStringValue(sw.get("install_location")));
+                }
+                if (sw.containsKey("size")) {
+                    software.setSize(getIntValue(sw.get("size")));
+                }
+                if (sw.containsKey("source")) {
+                    software.setSource(getStringValue(sw.get("source")));
+                }
+
+                installedSoftwareRepository.saveAndFlush(software);
+            }
+            logger.debug("Finished saving {} installed software entries.", installedSoftwareList.size());
+        } else {
+            logger.debug("No installed software data received for agent: {}", agentId);
+        }
+
+        if (usbDevicesObj instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> usbDevicesList = (List<Map<String, Object>>) usbDevicesObj;
+            logger.debug("---------- USB Devices Data ({} total) ----------", usbDevicesList.size());
+
+            for (Map<String, Object> usb : usbDevicesList) {
+                UsbDevice usbDevice = new UsbDevice();
+                usbDevice.setAgentId(agentId);
+
+                if (usb.containsKey("device_name")) {
+                    usbDevice.setDeviceName(getStringValue(usb.get("device_name")));
+                }
+                if (usb.containsKey("device_type")) {
+                    usbDevice.setDeviceType(getStringValue(usb.get("device_type")));
+                }
+                if (usb.containsKey("vendor_id")) {
+                    usbDevice.setVendorId(getStringValue(usb.get("vendor_id")));
+                }
+                if (usb.containsKey("product_id")) {
+                    usbDevice.setProductId(getStringValue(usb.get("product_id")));
+                }
+                if (usb.containsKey("serial_number")) {
+                    usbDevice.setSerialNumber(getStringValue(usb.get("serial_number")));
+                }
+                if (usb.containsKey("manufacturer")) {
+                    usbDevice.setManufacturer(getStringValue(usb.get("manufacturer")));
+                }
+                if (usb.containsKey("plugged_time")) {
+                    usbDevice.setPluggedTime(parseLocalDateTime(usb.get("plugged_time")));
+                }
+
+                usbDeviceRepository.saveAndFlush(usbDevice);
+            }
+            logger.debug("Finished saving {} USB device entries.", usbDevicesList.size());
+        } else {
+            logger.debug("No USB devices data received for agent: {}", agentId);
+        }
+
+        if (loginLogsObj instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> loginLogsList = (List<Map<String, Object>>) loginLogsObj;
+            logger.debug("---------- Login Logs Data ({} total) ----------", loginLogsList.size());
+
+            for (Map<String, Object> log : loginLogsList) {
+                LoginLog loginLog = new LoginLog();
+                loginLog.setAgentId(agentId);
+
+                if (log.containsKey("username")) {
+                    loginLog.setUsername(getStringValue(log.get("username")));
+                }
+                if (log.containsKey("login_type")) {
+                    loginLog.setLoginType(getStringValue(log.get("login_type")));
+                }
+                if (log.containsKey("login_time")) {
+                    loginLog.setLoginTime(parseLocalDateTime(log.get("login_time")));
+                }
+                if (log.containsKey("logout_time")) {
+                    loginLog.setLogoutTime(parseLocalDateTime(log.get("logout_time")));
+                }
+                if (log.containsKey("login_ip")) {
+                    loginLog.setLoginIp(getStringValue(log.get("login_ip")));
+                }
+                if (log.containsKey("login_status")) {
+                    loginLog.setLoginStatus(getStringValue(log.get("login_status")));
+                }
+                if (log.containsKey("session_id")) {
+                    loginLog.setSessionId(getStringValue(log.get("session_id")));
+                }
+                if (log.containsKey("source")) {
+                    loginLog.setSource(getStringValue(log.get("source")));
+                }
+
+                loginLogRepository.saveAndFlush(loginLog);
+            }
+            logger.debug("Finished saving {} login log entries.", loginLogsList.size());
+        } else {
+            logger.debug("No login logs data received for agent: {}", agentId);
+        }
+
         logger.info("========== Finished saving data for agent: {} ==========", agentId);
     }
 
@@ -227,6 +447,13 @@ public class AgentService {
         return null;
     }
 
+    private Long getLongValue(Object value) {
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        return null;
+    }
+
     private Double getDoubleValue(Object value) {
         if (value instanceof Number) {
             return ((Number) value).doubleValue();
@@ -236,5 +463,39 @@ public class AgentService {
 
     private String getStringValue(Object value) {
         return value != null ? value.toString() : null;
+    }
+
+    private java.time.LocalDate parseLocalDate(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String dateStr = value.toString();
+        try {
+            return java.time.LocalDate.parse(dateStr, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (Exception e) {
+            try {
+                return java.time.LocalDate.parse(dateStr, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            } catch (Exception ex) {
+                logger.warn("Unable to parse date: {}", dateStr);
+                return null;
+            }
+        }
+    }
+
+    private java.time.LocalDateTime parseLocalDateTime(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String dateTimeStr = value.toString();
+        try {
+            return java.time.LocalDateTime.parse(dateTimeStr, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        } catch (Exception e) {
+            try {
+                return java.time.LocalDateTime.parse(dateTimeStr, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            } catch (Exception ex) {
+                logger.warn("Unable to parse datetime: {}", dateTimeStr);
+                return null;
+            }
+        }
     }
 }

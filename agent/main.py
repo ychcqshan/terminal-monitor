@@ -8,11 +8,17 @@ import uuid
 import socket
 import time
 import threading
+import json
 from datetime import datetime
 from typing import Dict, Optional
 from config import load_config
 from collectors.process import ProcessCollector
 from collectors.port import PortCollector
+from collectors.system import SystemCollector
+from collectors.network import NetworkCollector
+from collectors.software import SoftwareCollector
+from collectors.usb import USBCollector
+from collectors.login import LoginCollector
 from storage.db import AgentDatabase
 from reporter.uploader import DataReporter
 from utils.logger import setup_logger
@@ -34,6 +40,12 @@ class TerminalMonitorAgent:
 
         self.process_collector = ProcessCollector()
         self.port_collector = PortCollector()
+        self.system_collector = SystemCollector()
+        self.network_collector = NetworkCollector()
+        self.software_collector = SoftwareCollector()
+        self.usb_collector = USBCollector()
+        self.login_collector = LoginCollector()
+        
         self.db = AgentDatabase(self.config.db_path)
         self.reporter = DataReporter(
             self.config.server_url,
@@ -194,38 +206,99 @@ class TerminalMonitorAgent:
         timestamp = datetime.now().isoformat()
         logger.info(f"[数据采集] 开始采集，时间戳: {timestamp}")
 
+        # 进程和端口数据
         processes = self.process_collector.collect_simple()
         ports = self.port_collector.collect_listening_ports()
 
+        # 系统信息
+        system_info = self.system_collector.collect()
+
+        # 网卡信息
+        network_interfaces = self.network_collector.collect()
+
+        # 已安装软件
+        installed_software = self.software_collector.collect()
+
+        # USB设备
+        usb_devices = self.usb_collector.collect()
+
+        # 登录日志（最近24小时）
+        login_logs = self.login_collector.collect(hours=24)
+
+        # 日志输出
         logger.info(f"[数据采集] ========== 进程数据 ==========")
         for i, proc in enumerate(processes[:10], 1):
             logger.info(f"  [{i:3d}] PID:{proc.get('pid'):<6} 名称:{proc.get('name'):<20} CPU:{proc.get('cpu_percent'):>5.1f}% 内存:{proc.get('memory_percent'):>5.1f}%")
         if len(processes) > 10:
             logger.info(f"  ... 共 {len(processes)} 个进程，显示前10个")
+
         logger.info(f"[数据采集] ========== 端口数据 ==========")
         for i, port in enumerate(ports[:10], 1):
             logger.info(f"  [{i:3d}] 端口:{port.get('port'):<5} 协议:{port.get('protocol'):<5} 状态:{port.get('status'):<10} 进程:{port.get('process_name'):<20}")
         if len(ports) > 10:
             logger.info(f"  ... 共 {len(ports)} 个端口，显示前10个")
+
+        logger.info(f"[数据采集] ========== 系统信息 ==========")
+        cpu = system_info.get('cpu', {})
+        memory = system_info.get('memory', {})
+        logger.info(f"  CPU: {cpu.get('brand', 'Unknown')[:40]}")
+        logger.info(f"  内存: {memory.get('total_human', 'Unknown')}")
+        logger.info(f"  磁盘: {len(system_info.get('storage', []))}个")
+
+        logger.info(f"[数据采集] ========== 网卡信息 ==========")
+        for i, iface in enumerate(network_interfaces[:5], 1):
+            mac = iface.get('mac', 'N/A')
+            ips = ', '.join([ip.get('address', '') for ip in iface.get('ips', [])[:2]])
+            logger.info(f"  [{i}] {iface.get('name', 'N/A')}: {mac} | {ips}")
+        if len(network_interfaces) > 5:
+            logger.info(f"  ... 共 {len(network_interfaces)} 个网卡")
+
+        logger.info(f"[数据采集] ========== 已安装软件 ==========")
+        for i, sw in enumerate(installed_software[:5], 1):
+            logger.info(f"  [{i}] {sw.get('software_name', 'Unknown')} ({sw.get('version', 'N/A')}) - {sw.get('software_type', 'unknown')}")
+        if len(installed_software) > 5:
+            logger.info(f"  ... 共 {len(installed_software)} 个软件")
+
+        logger.info(f"[数据采集] ========== USB设备 ==========")
+        for i, usb in enumerate(usb_devices[:5], 1):
+            logger.info(f"  [{i}] {usb.get('name', 'Unknown')} ({usb.get('type', 'unknown')})")
+        if len(usb_devices) > 5:
+            logger.info(f"  ... 共 {len(usb_devices)} 个USB设备")
+
+        logger.info(f"[数据采集] ========== 登录日志 ==========")
+        for i, log in enumerate(login_logs[:5], 1):
+            user = log.get('username', 'N/A')
+            ltype = log.get('login_type', 'N/A')
+            ip = log.get('login_ip', '')
+            status = log.get('login_status', 'N/A')
+            logger.info(f"  [{i}] {user} ({ltype}) from {ip} - {status}")
+        if len(login_logs) > 5:
+            logger.info(f"  ... 共 {len(login_logs)} 条登录记录")
+
         logger.info(f"[数据采集] =================================")
 
+        # 将系统信息扁平化以便后端解析
+        flat_host_info = self._flatten_host_info(system_info)
+
+        # 构建上报数据
         local_data = {
             "timestamp": timestamp,
             "processes": processes,
-            "ports": ports
+            "ports": ports,
+            "host_info": flat_host_info,
+            "network_interfaces": network_interfaces,
+            "installed_software": installed_software,
+            "usb_devices": usb_devices,
+            "login_logs": login_logs
         }
 
-        local_data = {
-            "timestamp": timestamp,
-            "processes": processes,
-            "ports": ports
-        }
-
+        # 保存到本地数据库
         self.db.save_processes(self.agent_id, processes)
         self.db.save_ports(self.agent_id, ports)
         self.db.save_agent(self.agent_id, self.agent_name,
                           self.platform_name, self.hostname, self.ip_address)
 
+        # 上报到服务器
         if self.reporter.send_data(self.agent_id, "monitor_data", local_data):
             logger.info("[数据采集] 数据上报成功")
         else:
@@ -249,6 +322,47 @@ class TerminalMonitorAgent:
                 self.db.update_agent_status(self.agent_id, "offline")
 
             time.sleep(self.config.heartbeat_interval)
+
+    def _flatten_host_info(self, system_info: Dict) -> Dict:
+        """将嵌套的系统信息扁平化以便后端解析"""
+        flat_info = {}
+
+        cpu = system_info.get('cpu', {})
+        memory = system_info.get('memory', {})
+        storage = system_info.get('storage', [])
+        motherboard = system_info.get('motherboard', {})
+        os_info = system_info.get('os', {})
+
+        flat_info['cpu_brand'] = cpu.get('brand', '')
+        flat_info['cpu_arch'] = cpu.get('arch', '')
+        flat_info['cpu_cores'] = cpu.get('cores', 0)
+        flat_info['cpu_threads'] = cpu.get('threads', 0)
+        flat_info['cpu_frequency'] = cpu.get('frequency', 0.0)
+
+        flat_info['memory_total'] = memory.get('total', 0)
+        flat_info['memory_available'] = memory.get('available', 0)
+        flat_info['memory_percent'] = memory.get('percent', 0.0)
+        flat_info['memory_human'] = memory.get('total_human', '')
+
+        if storage:
+            total_storage = sum(s.get('total', 0) for s in storage)
+            flat_info['storage_total'] = total_storage
+            # 存储为JSON数组格式
+            flat_info['storage_devices'] = json.dumps([s.get('device', '') for s in storage if s.get('device')])
+        else:
+            flat_info['storage_total'] = 0
+            flat_info['storage_devices'] = '[]'
+
+        flat_info['motherboard_model'] = motherboard.get('model', '')
+        flat_info['motherboard_serial'] = motherboard.get('serial', '')
+        flat_info['bios_version'] = motherboard.get('bios_version', '')
+
+        flat_info['os_name'] = os_info.get('name', '')
+        flat_info['os_version'] = os_info.get('version', '')
+        flat_info['os_arch'] = os_info.get('arch', '')
+        flat_info['kernel_version'] = os_info.get('kernel', '')
+
+        return flat_info
 
     def stop(self):
         """停止Agent"""
