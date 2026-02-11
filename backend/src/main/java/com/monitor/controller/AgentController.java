@@ -1,9 +1,17 @@
 package com.monitor.controller;
 
 import com.monitor.entity.Agent;
+import com.monitor.entity.HostInfo;
 import com.monitor.entity.PortInfo;
 import com.monitor.entity.ProcessInfo;
+import com.monitor.entity.InstalledSoftware;
+import com.monitor.entity.UsbDevice;
+import com.monitor.entity.LoginLog;
 import com.monitor.service.AgentService;
+import com.monitor.service.HostInfoService;
+import com.monitor.service.InstalledSoftwareService;
+import com.monitor.service.UsbDeviceService;
+import com.monitor.service.LoginLogService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -21,9 +29,21 @@ public class AgentController {
     private static final Logger logger = LoggerFactory.getLogger(AgentController.class);
 
     private final AgentService agentService;
+    private final HostInfoService hostInfoService;
+    private final InstalledSoftwareService installedSoftwareService;
+    private final UsbDeviceService usbDeviceService;
+    private final LoginLogService loginLogService;
 
-    public AgentController(AgentService agentService) {
+    public AgentController(AgentService agentService,
+                          HostInfoService hostInfoService,
+                          InstalledSoftwareService installedSoftwareService,
+                          UsbDeviceService usbDeviceService,
+                          LoginLogService loginLogService) {
         this.agentService = agentService;
+        this.hostInfoService = hostInfoService;
+        this.installedSoftwareService = installedSoftwareService;
+        this.usbDeviceService = usbDeviceService;
+        this.loginLogService = loginLogService;
     }
 
     @PostMapping("/register")
@@ -157,17 +177,69 @@ public class AgentController {
         }
     }
 
+    @GetMapping("/{agentId}/host-info")
+    public ResponseEntity<?> getHostInfo(@PathVariable String agentId) {
+        try {
+            List<HostInfo> hostInfo = hostInfoService.getHostInfoHistory(agentId);
+            return ResponseEntity.ok(hostInfo);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Map<String, Object> errorMap = new HashMap<>();
+            errorMap.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorMap);
+        }
+    }
+
+    @GetMapping("/{agentId}/installed-software")
+    public ResponseEntity<?> getInstalledSoftware(@PathVariable String agentId) {
+        try {
+            List<InstalledSoftware> installedSoftware = installedSoftwareService.getInstalledSoftwareHistory(agentId);
+            return ResponseEntity.ok(installedSoftware);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Map<String, Object> errorMap = new HashMap<>();
+            errorMap.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorMap);
+        }
+    }
+
+    @GetMapping("/{agentId}/usb-devices")
+    public ResponseEntity<?> getUsbDevices(@PathVariable String agentId) {
+        try {
+            List<UsbDevice> usbDevices = usbDeviceService.getUsbDevicesHistory(agentId);
+            return ResponseEntity.ok(usbDevices);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Map<String, Object> errorMap = new HashMap<>();
+            errorMap.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorMap);
+        }
+    }
+
+    @GetMapping("/{agentId}/login-logs")
+    public ResponseEntity<?> getLoginLogs(@PathVariable String agentId) {
+        try {
+            List<LoginLog> loginLogs = loginLogService.getLoginLogsHistory(agentId);
+            return ResponseEntity.ok(loginLogs);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Map<String, Object> errorMap = new HashMap<>();
+            errorMap.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorMap);
+        }
+    }
+
     @GetMapping("/status")
     public ResponseEntity<?> getStatus() {
         try {
             List<Agent> onlineAgents = agentService.getAgentsByStatus("online");
             List<Agent> offlineAgents = agentService.getAgentsByStatus("offline");
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("online", onlineAgents.size());
             response.put("offline", offlineAgents.size());
             response.put("total", onlineAgents.size() + offlineAgents.size());
-            
+
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             e.printStackTrace();

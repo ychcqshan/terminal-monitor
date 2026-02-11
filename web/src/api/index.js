@@ -28,6 +28,22 @@ export const agentApi = {
     return api.get(`/agents/${id}/ports`)
   },
 
+  getAgentHostInfo(id) {
+    return api.get(`/agents/${id}/host-info`)
+  },
+
+  getAgentSecuritySoftware(id) {
+    return api.get(`/agents/${id}/installed-software`)
+  },
+
+  getAgentUsbDevices(id) {
+    return api.get(`/agents/${id}/usb-devices`)
+  },
+
+  getAgentLoginLogs(id) {
+    return api.get(`/agents/${id}/login-logs`)
+  },
+
   updateAgent(id, data) {
     return api.put(`/agents/${id}`, data)
   },
