@@ -1,4 +1,4 @@
-agent.db
+agent/data/agent.db
 node_modules/
 *.log
 data/
