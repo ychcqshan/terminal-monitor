@@ -33,4 +33,12 @@ public class BaselineCompareResult {
 
     public List<AnomalyDTO> getModifiedItems() { return modifiedItems; }
     public void setModifiedItems(List<AnomalyDTO> modifiedItems) { this.modifiedItems = modifiedItems; }
+
+    public boolean hasAnomalies() {
+        return newItemsCount > 0 || missingItemsCount > 0 || modifiedItemsCount > 0;
+    }
+
+    public int getTotalAnomalies() {
+        return newItemsCount + missingItemsCount + modifiedItemsCount;
+    }
 }

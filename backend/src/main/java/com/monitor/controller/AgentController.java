@@ -4,9 +4,15 @@ import com.monitor.entity.Agent;
 import com.monitor.entity.HostInfo;
 import com.monitor.entity.PortInfo;
 import com.monitor.entity.ProcessInfo;
+import com.monitor.entity.CurrentPortInfo;
+import com.monitor.entity.CurrentProcessInfo;
+import com.monitor.entity.ProcessHistory;
+import com.monitor.entity.PortHistory;
 import com.monitor.entity.InstalledSoftware;
 import com.monitor.entity.UsbDevice;
 import com.monitor.entity.LoginLog;
+import com.monitor.repository.ProcessHistoryRepository;
+import com.monitor.repository.PortHistoryRepository;
 import com.monitor.service.AgentService;
 import com.monitor.service.HostInfoService;
 import com.monitor.service.InstalledSoftwareService;
@@ -33,17 +39,23 @@ public class AgentController {
     private final InstalledSoftwareService installedSoftwareService;
     private final UsbDeviceService usbDeviceService;
     private final LoginLogService loginLogService;
+    private final ProcessHistoryRepository processHistoryRepository;
+    private final PortHistoryRepository portHistoryRepository;
 
     public AgentController(AgentService agentService,
                           HostInfoService hostInfoService,
                           InstalledSoftwareService installedSoftwareService,
                           UsbDeviceService usbDeviceService,
-                          LoginLogService loginLogService) {
+                          LoginLogService loginLogService,
+                          ProcessHistoryRepository processHistoryRepository,
+                          PortHistoryRepository portHistoryRepository) {
         this.agentService = agentService;
         this.hostInfoService = hostInfoService;
         this.installedSoftwareService = installedSoftwareService;
         this.usbDeviceService = usbDeviceService;
         this.loginLogService = loginLogService;
+        this.processHistoryRepository = processHistoryRepository;
+        this.portHistoryRepository = portHistoryRepository;
     }
 
     @PostMapping("/register")
@@ -154,7 +166,7 @@ public class AgentController {
     @GetMapping("/{agentId}/processes")
     public ResponseEntity<?> getProcesses(@PathVariable String agentId) {
         try {
-            List<ProcessInfo> processes = agentService.getProcesses(agentId);
+            List<CurrentProcessInfo> processes = agentService.getProcesses(agentId);
             return ResponseEntity.ok(processes);
         } catch (Exception e) {
             e.printStackTrace();
@@ -167,7 +179,7 @@ public class AgentController {
     @GetMapping("/{agentId}/ports")
     public ResponseEntity<?> getPorts(@PathVariable String agentId) {
         try {
-            List<PortInfo> ports = agentService.getPorts(agentId);
+            List<CurrentPortInfo> ports = agentService.getPorts(agentId);
             return ResponseEntity.ok(ports);
         } catch (Exception e) {
             e.printStackTrace();
@@ -180,8 +192,9 @@ public class AgentController {
     @GetMapping("/{agentId}/host-info")
     public ResponseEntity<?> getHostInfo(@PathVariable String agentId) {
         try {
-            List<HostInfo> hostInfo = hostInfoService.getHostInfoHistory(agentId);
-            return ResponseEntity.ok(hostInfo);
+            return hostInfoService.getLatestHostInfo(agentId)
+                    .map(ResponseEntity::ok)
+                    .orElse(ResponseEntity.ok(null));
         } catch (Exception e) {
             e.printStackTrace();
             Map<String, Object> errorMap = new HashMap<>();
@@ -221,6 +234,32 @@ public class AgentController {
         try {
             List<LoginLog> loginLogs = loginLogService.getLoginLogsHistory(agentId);
             return ResponseEntity.ok(loginLogs);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Map<String, Object> errorMap = new HashMap<>();
+            errorMap.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorMap);
+        }
+    }
+
+    @GetMapping("/{agentId}/processes-history")
+    public ResponseEntity<?> getProcessHistory(@PathVariable String agentId) {
+        try {
+            List<ProcessHistory> history = processHistoryRepository.findByAgentId(agentId);
+            return ResponseEntity.ok(history);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Map<String, Object> errorMap = new HashMap<>();
+            errorMap.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorMap);
+        }
+    }
+
+    @GetMapping("/{agentId}/ports-history")
+    public ResponseEntity<?> getPortHistory(@PathVariable String agentId) {
+        try {
+            List<PortHistory> history = portHistoryRepository.findByAgentId(agentId);
+            return ResponseEntity.ok(history);
         } catch (Exception e) {
             e.printStackTrace();
             Map<String, Object> errorMap = new HashMap<>();

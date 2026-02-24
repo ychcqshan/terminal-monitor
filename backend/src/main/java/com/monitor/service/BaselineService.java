@@ -3,6 +3,8 @@ package com.monitor.service;
 import com.monitor.entity.*;
 import com.monitor.entity.dto.*;
 import com.monitor.repository.*;
+import com.monitor.repository.ProcessHistoryRepository;
+import com.monitor.repository.PortHistoryRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -24,8 +26,10 @@ public class BaselineService {
     private final BaselineSnapshotRepository snapshotRepository;
     private final BaselineItemRepository itemRepository;
     private final HostInfoRepository hostInfoRepository;
-    private final ProcessInfoRepository processInfoRepository;
-    private final PortInfoRepository portInfoRepository;
+    private final CurrentProcessInfoRepository currentProcessInfoRepository;
+    private final CurrentPortInfoRepository currentPortInfoRepository;
+    private final ProcessHistoryRepository processHistoryRepository;
+    private final PortHistoryRepository portHistoryRepository;
     private final UsbDeviceRepository usbDeviceRepository;
     private final LoginLogRepository loginLogRepository;
     private final InstalledSoftwareRepository installedSoftwareRepository;
@@ -34,8 +38,10 @@ public class BaselineService {
                           BaselineSnapshotRepository snapshotRepository,
                           BaselineItemRepository itemRepository,
                           HostInfoRepository hostInfoRepository,
-                          ProcessInfoRepository processInfoRepository,
-                          PortInfoRepository portInfoRepository,
+                          CurrentProcessInfoRepository currentProcessInfoRepository,
+                          CurrentPortInfoRepository currentPortInfoRepository,
+                          ProcessHistoryRepository processHistoryRepository,
+                          PortHistoryRepository portHistoryRepository,
                           UsbDeviceRepository usbDeviceRepository,
                           LoginLogRepository loginLogRepository,
                           InstalledSoftwareRepository installedSoftwareRepository) {
@@ -43,8 +49,10 @@ public class BaselineService {
         this.snapshotRepository = snapshotRepository;
         this.itemRepository = itemRepository;
         this.hostInfoRepository = hostInfoRepository;
-        this.processInfoRepository = processInfoRepository;
-        this.portInfoRepository = portInfoRepository;
+        this.currentProcessInfoRepository = currentProcessInfoRepository;
+        this.currentPortInfoRepository = currentPortInfoRepository;
+        this.processHistoryRepository = processHistoryRepository;
+        this.portHistoryRepository = portHistoryRepository;
         this.usbDeviceRepository = usbDeviceRepository;
         this.loginLogRepository = loginLogRepository;
         this.installedSoftwareRepository = installedSoftwareRepository;
@@ -353,14 +361,14 @@ public class BaselineService {
     private List<Map<String, Object>> getCurrentData(String agentId, String type) {
         switch (type.toUpperCase()) {
             case "PROCESS":
-                return processInfoRepository.findByAgentIdOrderByCollectedAtDesc(agentId).stream()
+                return currentProcessInfoRepository.findByAgentIdOrderByCollectedAtDesc(agentId).stream()
                         .limit(500)
-                        .map(this::processToMap)
+                        .map(this::currentProcessToMap)
                         .collect(Collectors.toList());
             case "PORT":
-                return portInfoRepository.findByAgentIdOrderByCollectedAtDesc(agentId).stream()
+                return currentPortInfoRepository.findByAgentIdOrderByCollectedAtDesc(agentId).stream()
                         .limit(500)
-                        .map(this::portToMap)
+                        .map(this::currentPortToMap)
                         .collect(Collectors.toList());
             case "USB":
                 return usbDeviceRepository.findByAgentIdOrderByCollectedAtDesc(agentId).stream()
@@ -385,14 +393,14 @@ public class BaselineService {
     private List<Map<String, Object>> getHistoricalData(String agentId, String type, LocalDateTime since) {
         switch (type.toUpperCase()) {
             case "PROCESS":
-                return processInfoRepository.findByAgentIdOrderByCollectedAtDesc(agentId).stream()
-                        .filter(p -> p.getCollectedAt().isAfter(since))
-                        .map(this::processToMap)
+                return processHistoryRepository.findByAgentId(agentId).stream()
+                        .filter(p -> p.getCollectedAt() != null && p.getCollectedAt().isAfter(since))
+                        .map(this::historyProcessToMap)
                         .collect(Collectors.toList());
             case "PORT":
-                return portInfoRepository.findByAgentIdOrderByCollectedAtDesc(agentId).stream()
-                        .filter(p -> p.getCollectedAt().isAfter(since))
-                        .map(this::portToMap)
+                return portHistoryRepository.findByAgentId(agentId).stream()
+                        .filter(p -> p.getCollectedAt() != null && p.getCollectedAt().isAfter(since))
+                        .map(this::historyPortToMap)
                         .collect(Collectors.toList());
             default:
                 return getCurrentData(agentId, type);
@@ -428,6 +436,40 @@ public class BaselineService {
         map.put("itemKey", l.getUsername() + ":" + l.getLoginType());
         map.put("itemValue", l.getUsername() + "|" + l.getLoginType() + "|" + l.getLoginIp() + "|" + l.getLoginTime());
         map.put("itemType", "login");
+        return map;
+    }
+
+    private Map<String, Object> currentProcessToMap(CurrentProcessInfo p) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("itemKey", p.getPid() + ":" + p.getName());
+        map.put("itemValue", p.getName() + "|" + p.getPid() + "|" + p.getCpuPercent() + "|" + p.getMemoryPercent());
+        map.put("itemType", "process");
+        return map;
+    }
+
+    private Map<String, Object> currentPortToMap(CurrentPortInfo p) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("itemKey", p.getPort() + ":" + p.getProtocol());
+        map.put("itemValue", p.getPort() + "|" + p.getProtocol() + "|" + p.getStatus() + "|" + p.getProcessName());
+        map.put("itemType", "port");
+        return map;
+    }
+
+    private Map<String, Object> historyProcessToMap(ProcessHistory p) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("itemKey", p.getPid() + ":" + p.getName());
+        map.put("itemValue", p.getName() + "|" + p.getPid() + "|" + p.getCpuPercent() + "|" + p.getMemoryPercent());
+        map.put("itemType", "process");
+        map.put("collectionRound", p.getCollectionRound());
+        return map;
+    }
+
+    private Map<String, Object> historyPortToMap(PortHistory p) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("itemKey", p.getPort() + ":" + p.getProtocol());
+        map.put("itemValue", p.getPort() + "|" + p.getProtocol() + "|" + p.getStatus() + "|" + p.getProcessName());
+        map.put("itemType", "port");
+        map.put("collectionRound", p.getCollectionRound());
         return map;
     }
 

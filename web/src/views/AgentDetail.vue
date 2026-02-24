@@ -264,7 +264,7 @@ const paginatedLoginLogs = computed(() => {
 const fetchData = async () => {
   loading.value = true
   try {
-    const [agentRes, processesRes, portsRes, hostInfoRes, installedSoftwareRes, usbDevicesRes, loginLogsRes] = await Promise.all([
+const [agentRes, processesRes, portsRes, hostInfoRes, installedSoftwareRes, usbDevicesRes, loginLogsRes] = await Promise.all([
       agentApi.getAgent(agentId),
       agentApi.getAgentProcesses(agentId),
       agentApi.getAgentPorts(agentId),
@@ -273,11 +273,11 @@ const fetchData = async () => {
       agentApi.getAgentUsbDevices(agentId),
       agentApi.getAgentLoginLogs(agentId)
     ])
+    
     agent.value = agentRes.data
     processes.value = processesRes.data || []
     ports.value = portsRes.data || []
-    const hostInfoData = hostInfoRes.data || []
-    hostInfo.value = hostInfoData.length > 0 ? hostInfoData[0] : null
+    hostInfo.value = hostInfoRes.data || null
     installedSoftware.value = installedSoftwareRes.data || []
     usbDevices.value = usbDevicesRes.data || []
     loginLogs.value = loginLogsRes.data || []

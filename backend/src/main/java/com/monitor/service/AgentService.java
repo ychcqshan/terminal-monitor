@@ -1,19 +1,7 @@
 package com.monitor.service;
 
-import com.monitor.entity.Agent;
-import com.monitor.entity.HostInfo;
-import com.monitor.entity.PortInfo;
-import com.monitor.entity.ProcessInfo;
-import com.monitor.entity.InstalledSoftware;
-import com.monitor.entity.UsbDevice;
-import com.monitor.entity.LoginLog;
-import com.monitor.repository.AgentRepository;
-import com.monitor.repository.HostInfoRepository;
-import com.monitor.repository.PortInfoRepository;
-import com.monitor.repository.ProcessInfoRepository;
-import com.monitor.repository.InstalledSoftwareRepository;
-import com.monitor.repository.UsbDeviceRepository;
-import com.monitor.repository.LoginLogRepository;
+import com.monitor.entity.*;
+import com.monitor.repository.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -36,6 +24,12 @@ public class AgentService {
     private final InstalledSoftwareRepository installedSoftwareRepository;
     private final UsbDeviceRepository usbDeviceRepository;
     private final LoginLogRepository loginLogRepository;
+    private final AnomalyDetectionService anomalyDetectionService;
+    private final CollectionRoundService collectionRoundService;
+    private final CurrentProcessInfoRepository currentProcessInfoRepository;
+    private final CurrentPortInfoRepository currentPortInfoRepository;
+    private final ProcessHistoryRepository processHistoryRepository;
+    private final PortHistoryRepository portHistoryRepository;
 
     public AgentService(AgentRepository agentRepository,
                        ProcessInfoRepository processInfoRepository,
@@ -43,7 +37,13 @@ public class AgentService {
                        HostInfoRepository hostInfoRepository,
                        InstalledSoftwareRepository installedSoftwareRepository,
                        UsbDeviceRepository usbDeviceRepository,
-                       LoginLogRepository loginLogRepository) {
+                       LoginLogRepository loginLogRepository,
+                       AnomalyDetectionService anomalyDetectionService,
+                       CollectionRoundService collectionRoundService,
+                       CurrentProcessInfoRepository currentProcessInfoRepository,
+                       CurrentPortInfoRepository currentPortInfoRepository,
+                       ProcessHistoryRepository processHistoryRepository,
+                       PortHistoryRepository portHistoryRepository) {
         this.agentRepository = agentRepository;
         this.processInfoRepository = processInfoRepository;
         this.portInfoRepository = portInfoRepository;
@@ -51,6 +51,12 @@ public class AgentService {
         this.installedSoftwareRepository = installedSoftwareRepository;
         this.usbDeviceRepository = usbDeviceRepository;
         this.loginLogRepository = loginLogRepository;
+        this.anomalyDetectionService = anomalyDetectionService;
+        this.collectionRoundService = collectionRoundService;
+        this.currentProcessInfoRepository = currentProcessInfoRepository;
+        this.currentPortInfoRepository = currentPortInfoRepository;
+        this.processHistoryRepository = processHistoryRepository;
+        this.portHistoryRepository = portHistoryRepository;
     }
 
     public Agent registerOrUpdateAgent(Map<String, String> agentInfo) {
@@ -151,9 +157,12 @@ public class AgentService {
         return agentRepository.countByStatus("offline");
     }
 
-    @Transactional
+@Transactional
     public void saveMonitorData(String agentId, Map<String, Object> data) {
         logger.info("========== Saving monitor data for agent: {} ==========", agentId);
+
+        int currentRound = collectionRoundService.getNextRound(agentId);
+        logger.info("Current collection round for agent {}: {}", agentId, currentRound);
 
         @SuppressWarnings("unchecked")
         Map<String, Object> nestedData = (Map<String, Object>) data.get("data");
@@ -169,76 +178,90 @@ public class AgentService {
         Object usbDevicesObj = nestedData.get("usb_devices");
         Object loginLogsObj = nestedData.get("login_logs");
 
+        // Process data - dual write
         if (processesObj instanceof List) {
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> processes = (List<Map<String, Object>>) processesObj;
             logger.debug("---------- Process Data ({} total) ----------", processes.size());
-            for (int i = 0; i < Math.min(processes.size(), 10); i++) {
-                Map<String, Object> proc = processes.get(i);
-                logger.debug("[{}] PID:{}, Name:{}, CPU:{}%, Memory:{}%, Status:{}",
-                    i + 1,
-                    proc.get("pid"),
-                    proc.get("name"),
-                    proc.get("cpu_percent"),
-                    proc.get("memory_percent"),
-                    proc.get("status"));
-            }
-            if (processes.size() > 10) {
-                logger.debug("... and {} more processes", processes.size() - 10);
-            }
-
+            
+            // Save to current status table (replace)
+            currentProcessInfoRepository.deleteByAgentId(agentId);
             for (Map<String, Object> proc : processes) {
-                ProcessInfo processInfo = new ProcessInfo();
-                processInfo.setAgentId(agentId);
-                processInfo.setPid(getIntValue(proc.get("pid")));
-                processInfo.setName(getStringValue(proc.get("name")));
-                processInfo.setCpuPercent(getDoubleValue(proc.get("cpu_percent")));
-                processInfo.setMemoryPercent(getDoubleValue(proc.get("memory_percent")));
-                processInfo.setStatus(getStringValue(proc.get("status")));
-                processInfo.setCreateTime(getStringValue(proc.get("create_time")));
-                processInfoRepository.saveAndFlush(processInfo);
+                CurrentProcessInfo currentInfo = new CurrentProcessInfo();
+                currentInfo.setAgentId(agentId);
+                currentInfo.setPid(getIntValue(proc.get("pid")));
+                currentInfo.setName(getStringValue(proc.get("name")));
+                currentInfo.setCpuPercent(getDoubleValue(proc.get("cpu_percent")));
+                currentInfo.setMemoryPercent(getDoubleValue(proc.get("memory_percent")));
+                currentInfo.setStatus(getStringValue(proc.get("status")));
+                currentInfo.setCreateTime(getStringValue(proc.get("create_time")));
+                currentProcessInfoRepository.save(currentInfo);
             }
-            logger.debug("Finished saving {} process entries.", processes.size());
+            
+            // Save to history table (append)
+            for (Map<String, Object> proc : processes) {
+                ProcessHistory history = new ProcessHistory();
+                history.setAgentId(agentId);
+                history.setCollectionRound(currentRound);
+                history.setPid(getIntValue(proc.get("pid")));
+                history.setName(getStringValue(proc.get("name")));
+                history.setCpuPercent(getDoubleValue(proc.get("cpu_percent")));
+                history.setMemoryPercent(getDoubleValue(proc.get("memory_percent")));
+                history.setStatus(getStringValue(proc.get("status")));
+                history.setCreateTime(getStringValue(proc.get("create_time")));
+                processHistoryRepository.save(history);
+            }
+            
+            logger.debug("Finished saving {} process entries (current + history).", processes.size());
         } else {
             logger.debug("No process data received for agent: {}", agentId);
         }
 
+        // Port data - dual write
         if (portsObj instanceof List) {
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> ports = (List<Map<String, Object>>) portsObj;
             logger.debug("---------- Port Data ({} total) ----------", ports.size());
-            for (int i = 0; i < Math.min(ports.size(), 10); i++) {
-                Map<String, Object> port = ports.get(i);
-                logger.debug("[{}] Port:{}, Protocol:{}, Status:{}, Process:{}",
-                    i + 1,
-                    port.get("port"),
-                    port.get("protocol"),
-                    port.get("status"),
-                    port.get("process_name"));
-            }
-            if (ports.size() > 10) {
-                logger.debug("... and {} more ports", ports.size() - 10);
-            }
-
+            
+            // Save to current status table (replace)
+            currentPortInfoRepository.deleteByAgentId(agentId);
             for (Map<String, Object> port : ports) {
-                PortInfo portInfo = new PortInfo();
-                portInfo.setAgentId(agentId);
-                portInfo.setPort(getIntValue(port.get("port")));
-                portInfo.setProtocol(getStringValue(port.get("protocol")));
-                portInfo.setStatus(getStringValue(port.get("status")));
-                portInfo.setPid(getIntValue(port.get("pid")));
-                portInfo.setProcessName(getStringValue(port.get("process_name")));
-                portInfoRepository.saveAndFlush(portInfo);
+                CurrentPortInfo currentInfo = new CurrentPortInfo();
+                currentInfo.setAgentId(agentId);
+                currentInfo.setPort(getIntValue(port.get("port")));
+                currentInfo.setProtocol(getStringValue(port.get("protocol")));
+                currentInfo.setStatus(getStringValue(port.get("status")));
+                currentInfo.setPid(getIntValue(port.get("pid")));
+                currentInfo.setProcessName(getStringValue(port.get("process_name")));
+                currentPortInfoRepository.save(currentInfo);
             }
-            logger.debug("Finished saving {} port entries.", ports.size());
+            
+            // Save to history table (append)
+            for (Map<String, Object> port : ports) {
+                PortHistory history = new PortHistory();
+                history.setAgentId(agentId);
+                history.setCollectionRound(currentRound);
+                history.setPort(getIntValue(port.get("port")));
+                history.setProtocol(getStringValue(port.get("protocol")));
+                history.setStatus(getStringValue(port.get("status")));
+                history.setPid(getIntValue(port.get("pid")));
+                history.setProcessName(getStringValue(port.get("process_name")));
+                portHistoryRepository.save(history);
+            }
+            
+            logger.debug("Finished saving {} port entries (current + history).", ports.size());
         } else {
             logger.debug("No port data received for agent: {}", agentId);
         }
 
+        // Host Info data (current only, no history needed)
         if (hostInfoObj instanceof Map) {
             @SuppressWarnings("unchecked")
             Map<String, Object> hostInfoData = (Map<String, Object>) hostInfoObj;
             logger.debug("---------- Host Info Data ----------");
+            
+            hostInfoRepository.deleteByAgentId(agentId);
+            
             HostInfo hostInfo = new HostInfo();
             hostInfo.setAgentId(agentId);
 
@@ -314,6 +337,8 @@ public class AgentService {
             List<Map<String, Object>> installedSoftwareList = (List<Map<String, Object>>) installedSoftwareObj;
             logger.debug("---------- Installed Software Data ({} total) ----------", installedSoftwareList.size());
 
+            installedSoftwareRepository.deleteByAgentId(agentId);
+
             for (Map<String, Object> sw : installedSoftwareList) {
                 InstalledSoftware software = new InstalledSoftware();
                 software.setAgentId(agentId);
@@ -355,6 +380,8 @@ public class AgentService {
             List<Map<String, Object>> usbDevicesList = (List<Map<String, Object>>) usbDevicesObj;
             logger.debug("---------- USB Devices Data ({} total) ----------", usbDevicesList.size());
 
+            usbDeviceRepository.deleteByAgentId(agentId);
+
             for (Map<String, Object> usb : usbDevicesList) {
                 UsbDevice usbDevice = new UsbDevice();
                 usbDevice.setAgentId(agentId);
@@ -393,6 +420,8 @@ public class AgentService {
             List<Map<String, Object>> loginLogsList = (List<Map<String, Object>>) loginLogsObj;
             logger.debug("---------- Login Logs Data ({} total) ----------", loginLogsList.size());
 
+            loginLogRepository.deleteByAgentId(agentId);
+
             for (Map<String, Object> log : loginLogsList) {
                 LoginLog loginLog = new LoginLog();
                 loginLog.setAgentId(agentId);
@@ -429,15 +458,45 @@ public class AgentService {
             logger.debug("No login logs data received for agent: {}", agentId);
         }
 
+        try {
+            if (processesObj instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> processes = (List<Map<String, Object>>) processesObj;
+                anomalyDetectionService.detectAndAlert(agentId, "PROCESS", processes);
+            }
+            if (portsObj instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> ports = (List<Map<String, Object>>) portsObj;
+                anomalyDetectionService.detectAndAlert(agentId, "PORT", ports);
+            }
+            if (usbDevicesObj instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> usbDevices = (List<Map<String, Object>>) usbDevicesObj;
+                anomalyDetectionService.detectAndAlert(agentId, "USB", usbDevices);
+            }
+            if (loginLogsObj instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> loginLogs = (List<Map<String, Object>>) loginLogsObj;
+                anomalyDetectionService.detectAndAlert(agentId, "LOGIN", loginLogs);
+            }
+            if (installedSoftwareObj instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> software = (List<Map<String, Object>>) installedSoftwareObj;
+                anomalyDetectionService.detectAndAlert(agentId, "SOFTWARE", software);
+            }
+        } catch (Exception e) {
+            logger.error("Anomaly detection failed for agent {}: {}", agentId, e.getMessage());
+        }
+
         logger.info("========== Finished saving data for agent: {} ==========", agentId);
     }
 
-    public List<ProcessInfo> getProcesses(String agentId) {
-        return processInfoRepository.findByAgentIdOrderByCollectedAtDesc(agentId);
+    public List<CurrentProcessInfo> getProcesses(String agentId) {
+        return currentProcessInfoRepository.findByAgentIdOrderByCollectedAtDesc(agentId);
     }
 
-    public List<PortInfo> getPorts(String agentId) {
-        return portInfoRepository.findByAgentIdOrderByCollectedAtDesc(agentId);
+    public List<CurrentPortInfo> getPorts(String agentId) {
+        return currentPortInfoRepository.findByAgentIdOrderByCollectedAtDesc(agentId);
     }
 
     private Integer getIntValue(Object value) {
@@ -470,16 +529,28 @@ public class AgentService {
             return null;
         }
         String dateStr = value.toString();
-        try {
-            return java.time.LocalDate.parse(dateStr, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
-        } catch (Exception e) {
+        
+        String[] patterns = {
+            "yyyy-MM-dd",
+            "yyyy/MM/dd",
+            "M/d/yyyy",
+            "MM/dd/yyyy",
+            "d/M/yyyy",
+            "dd/MM/yyyy",
+            "yyyy-M-d",
+            "M-d-yyyy"
+        };
+        
+        for (String pattern : patterns) {
             try {
-                return java.time.LocalDate.parse(dateStr, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-            } catch (Exception ex) {
-                logger.warn("Unable to parse date: {}", dateStr);
-                return null;
+                return java.time.LocalDate.parse(dateStr, java.time.format.DateTimeFormatter.ofPattern(pattern));
+            } catch (Exception e) {
+                // continue to next pattern
             }
         }
+        
+        logger.warn("Unable to parse date: {}", dateStr);
+        return null;
     }
 
     private java.time.LocalDateTime parseLocalDateTime(Object value) {
@@ -487,15 +558,27 @@ public class AgentService {
             return null;
         }
         String dateTimeStr = value.toString();
-        try {
-            return java.time.LocalDateTime.parse(dateTimeStr, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-        } catch (Exception e) {
+        
+        String[] patterns = {
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy/MM/dd HH:mm:ss",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd HH:mm",
+            "M/d/yyyy HH:mm:ss",
+            "MM/dd/yyyy HH:mm:ss",
+            "M/d/yyyy H:mm:ss",
+            "MM/dd/yyyy H:mm:ss"
+        };
+        
+        for (String pattern : patterns) {
             try {
-                return java.time.LocalDateTime.parse(dateTimeStr, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-            } catch (Exception ex) {
-                logger.warn("Unable to parse datetime: {}", dateTimeStr);
-                return null;
+                return java.time.LocalDateTime.parse(dateTimeStr, java.time.format.DateTimeFormatter.ofPattern(pattern));
+            } catch (Exception e) {
+                // continue to next pattern
             }
         }
+        
+        logger.warn("Unable to parse datetime: {}", dateTimeStr);
+        return null;
     }
 }
